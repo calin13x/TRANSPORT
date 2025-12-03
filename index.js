@@ -4,9 +4,15 @@ import dotenv from "dotenv";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import Trasporto from "./models/Trasporto.js";
+import http from "http";
+import { Server } from "socket.io";
 
 dotenv.config();
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST", "PUT", "DELETE"] }
+});
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
@@ -56,11 +62,13 @@ app.get("/api/trasporti/recent", verifyToken, async (req, res) => {
 app.post("/api/trasporti", verifyToken, async (req, res) => {
   const doc = new Trasporto(req.body);
   const saved = await doc.save();
+  io.emit("trasporto_created", saved);
   res.json(saved);
 });
 
 app.put("/api/trasporti/:id", verifyToken, async (req, res) => {
   const updated = await Trasporto.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  io.emit("trasporto_updated", updated);
   res.json(updated);
 });
 
@@ -69,6 +77,7 @@ app.delete("/api/trasporti/:id", verifyToken, async (req, res) => {
   try {
     const deleted = await Trasporto.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Trasporto not found" });
+    io.emit("trasporto_deleted", req.params.id);
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting trasporto:", err);
@@ -82,4 +91,12 @@ app.get("/api/me", verifyToken, (req, res) => {
   res.json({ user: req.user });
 });
 
-app.listen(PORT, () => console.log(`🚀 Backend running on http://localhost:${PORT}`));
+// WebSocket connection
+io.on("connection", (socket) => {
+  console.log("✅ Client connected:", socket.id);
+  socket.on("disconnect", () => {
+    console.log("❌ Client disconnected:", socket.id);
+  });
+});
+
+server.listen(PORT, () => console.log(`🚀 Backend running on http://localhost:${PORT}`));
